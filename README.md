@@ -173,10 +173,9 @@ Key tables and their relationships:
 2. SQL Server
 3. ODBC Driver 17 for SQL Server
 4. Required Python packages:
-    
+
     ```bash
-    pip install streamlit pandas pyodbc
-    
+    pip install -r requirements.txt
     ```
     
 
@@ -188,10 +187,7 @@ To start the application:
 streamlit run app.py
 
 ```
-To install these requirements, you can run:
-```bash
-pip install -r requirements.txt
-```
+
 
 ### Maintenance and Troubleshooting
 

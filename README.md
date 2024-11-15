@@ -188,6 +188,10 @@ To start the application:
 streamlit run app.py
 
 ```
+To install these requirements, you can run:
+```bash
+pip install -r requirements.txt
+```
 
 ### Maintenance and Troubleshooting
 

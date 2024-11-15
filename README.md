@@ -1,5 +1,4 @@
 <aside>
-<img src="/icons/database_red.svg" alt="/icons/database_red.svg" width="40px" />
 
 # Technical Documentation
 

@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
-# import mysql.connector
 from datetime import datetime
 import pyodbc
 import logging
 import warnings
+import matplotlib.pyplot as plt
+
 
 logging.getLogger().setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", message="missing ScriptRunContext!")
@@ -573,20 +574,22 @@ def attendance_management():
         finally:
             close_connection(conn)
 
-        # Dropdown options for selecting student and class
-        student_options = [f"{s[0]} - {s[1]} {s[2]}" for s in students]
+        # Dropdown options for selecting class
         class_options = [f"{c[0]} - {c[1]}" for c in classes]
-        selected_student = st.selectbox("Select Student", student_options)
-        selected_class = st.selectbox("Select Class", class_options)
-        attendance_status = st.selectbox("Attendance Status", ["Present", "Absent", "Late"])
-        date = st.date_input("Date", datetime.now().date())
+        selected_class = st.selectbox("Select Class", class_options, key="mark_attendance_class")
+        class_id = int(selected_class.split(" - ")[0])
 
-        if st.button("Mark Attendance"):
+        # Filter students based on selected class
+        student_options = [f"{s[0]} - {s[1]} {s[2]}" for s in students if s[0] in [student[0] for student in students if student[1] == class_id]]
+        selected_student = st.selectbox("Select Student", student_options, key="mark_attendance_student")
+        attendance_status = st.selectbox("Attendance Status", ["Present", "Absent", "Late"], key="mark_attendance_status")
+        date = st.date_input("Date", datetime.now().date(), key="mark_attendance_date")
+
+        if st.button("Mark Attendance", key="mark_attendance_button"):
             conn = create_connection()
             cursor = conn.cursor()
             try:
                 student_id = int(selected_student.split(" - ")[0])
-                class_id = int(selected_class.split(" - ")[0])
                 cursor.execute("""
                     INSERT INTO Attendance (student_id, class_id, status, date)
                     VALUES (?, ?, ?, ?)
@@ -603,13 +606,20 @@ def attendance_management():
         st.subheader("View Attendance")
         conn = create_connection()
         cursor = conn.cursor()
+
+        # Dropdown for selecting class
+        class_options = [f"{c[0]} - {c[1]}" for c in classes]
+        selected_class = st.selectbox("Select Class", class_options, key="view_attendance_class")
+        class_id = int(selected_class.split(" - ")[0])
+
         try:
             cursor.execute("""
                 SELECT A.attendance_id, S.first_name, S.last_name, C.class_name, A.status, A.date
                 FROM Attendance A
                 JOIN Students S ON A.student_id = S.student_id
                 JOIN Classes C ON A.class_id = C.class_id
-            """)
+                WHERE C.class_id = ?
+            """, (class_id,))
             result = cursor.fetchall()
 
             # Check if result contains any rows
@@ -619,7 +629,7 @@ def attendance_management():
                 df = pd.DataFrame(formatted_result, columns=columns)
                 st.dataframe(df)
             else:
-                st.info("No attendance records found.")
+                st.info("No attendance records found for this class.")
         except Exception as e:
             st.error(f"Error retrieving attendance: {str(e)}")
         finally:
@@ -637,7 +647,7 @@ def attendance_management():
             
             if attendance_records:
                 attendance_options = [f"{a[0]} - Student ID: {a[1]}, Class ID: {a[2]}, Status: {a[3]}" for a in attendance_records]
-                selected_attendance = st.selectbox("Select Attendance to Update", attendance_options)
+                selected_attendance = st.selectbox("Select Attendance to Update", attendance_options, key="update_attendance_select")
                 selected_attendance_id = int(selected_attendance.split(" - ")[0])
 
                 cursor.execute("""
@@ -647,10 +657,10 @@ def attendance_management():
                 """, (selected_attendance_id,))
                 attendance_data = cursor.fetchone()
 
-                new_status = st.selectbox("Status", options=["Present", "Absent"], index=["Present", "Absent"].index(attendance_data[2]))
-                new_date = st.date_input("Date", value=attendance_data[3])
+                new_status = st.selectbox("Status", options=["Present", "Absent"], index=["Present", "Absent"].index(attendance_data[2]), key="update_attendance_status")
+                new_date = st.date_input("Date", value=attendance_data[3], key="update_attendance_date")
 
-                if st.button("Update Attendance"):
+                if st.button("Update Attendance", key="update_attendance_button"):
                     try:
                         cursor.execute("""
                             UPDATE Attendance
@@ -666,88 +676,258 @@ def attendance_management():
         finally:
             close_connection(conn)
 
-# Advanced Queries
 def advanced_queries():
-    st.header("Advanced Queries")
+    st.title("Advanced Queries")
+    st.markdown("""
+    Discover insights into student performance, class efficiency, and attendance records. 
+    Navigate through the tabs below to explore different analyses.
+    """)
     
-    # Dropdown for selecting an advanced query
-    query_option = st.selectbox(
-        "Select an Advanced Query", 
-        ["Top Performing Students", "Class Performance", "Student Attendance Summary"]
-    )
+    # Create tabs
+    tabs = st.tabs([
+        "Top Performing Students", "Class Performance", "Student Attendance Summary",
+        "Underperforming Students", "Attendance Trends Over Time", "Class Enrollment Counts",
+        "Students with Consistent Attendance", "Class Performance Comparison Over Time"
+    ])
     
+    # Establish database connection
     conn = create_connection()
-    cursor = conn.cursor()
+    if not conn:
+        st.error("Failed to connect to the database.")
+        return  # Stop execution if connection fails
     
-    if query_option == "Top Performing Students":
-        st.subheader("Top Performing Students")
-        try:
+    cursor = conn.cursor()
+
+    try:
+        # Example of executing a query (adjust for each tab)
+        with tabs[0]:
+            st.subheader("Top Performing Students")
             cursor.execute("""
-                SELECT TOP 10 S.first_name, S.last_name, AVG(TRY_CAST(G.grade AS FLOAT)) AS average_grade
+                SELECT TOP 10
+                    S.first_name, 
+                    S.last_name, 
+                    AVG(CASE grade 
+                        WHEN 'A' THEN 95
+                        WHEN 'B' THEN 85
+                        WHEN 'C' THEN 75
+                        WHEN 'D' THEN 65
+                        WHEN 'F' THEN 55
+                    END) AS average_grade
                 FROM Grades G
                 JOIN Students S ON G.student_id = S.student_id
                 GROUP BY S.first_name, S.last_name
-                ORDER BY average_grade DESC
+                ORDER BY average_grade DESC;
             """)
-
             result = cursor.fetchall()
+
+            # Check if the result contains any data
             if result:
-                columns = ['First Name', 'Last Name', 'Average Grade']
-                formatted_result = [list(row) for row in result]
-                df = pd.DataFrame(formatted_result, columns=columns)
+                # Ensure the result is in the expected format
+                result_data = [list(row) for row in result]  # Convert tuple to list if needed
+
+                # Create DataFrame from the result
+                df = pd.DataFrame(result_data, columns=['First Name', 'Last Name', 'Average Grade'])
+
+                # Display the DataFrame
                 st.dataframe(df)
             else:
-                st.info("No data found.")
-        except Exception as e:
-            st.error(f"Error executing query: {str(e)}")
-    
-    elif query_option == "Class Performance":
-        st.subheader("Class Performance")
-        try:
+                st.write("No top-performing students available.")
+
+        # Class Performance
+        with tabs[1]:
+            st.subheader("Class Performance")
             cursor.execute("""
-                SELECT TOP 10 C.class_name, AVG(TRY_CAST(G.grade AS FLOAT)) AS average_grade
+                SELECT 
+                    C.class_name, 
+                    AVG(CASE grade 
+                        WHEN 'A' THEN 95
+                        WHEN 'B' THEN 85
+                        WHEN 'C' THEN 75
+                        WHEN 'D' THEN 65
+                        WHEN 'F' THEN 55
+                    END) AS average_grade
                 FROM Grades G
                 JOIN Classes C ON G.class_id = C.class_id
                 GROUP BY C.class_name
-                ORDER BY average_grade DESC
+                ORDER BY average_grade DESC;
             """)
             result = cursor.fetchall()
             if result:
-                columns = ['Class Name', 'Average Grade']
-                formatted_result = [list(row) for row in result]
-                df = pd.DataFrame(formatted_result, columns=columns)
+                result_data = [list(row) for row in result]
+                df = pd.DataFrame(result_data, columns=['Class Name', 'Average Grade'])
                 st.dataframe(df)
             else:
-                st.info("No data found.")
-        except Exception as e:
-            st.error(f"Error executing query: {str(e)}")
+                st.write("No class performance data available.")
 
-    elif query_option == "Student Attendance Summary":
-        st.subheader("Student Attendance Summary")
-        try:
+        # Student Attendance Summary
+        with tabs[2]:
+            st.subheader("Student Attendance Summary")
             cursor.execute("""
-                SELECT TOP 10 S.first_name, S.last_name, COUNT(A.attendance_id) AS total_attendance
-                FROM Attendance A
-                JOIN Students S ON A.student_id = S.student_id
-                WHERE A.status = 'Present'
+                SELECT 
+                    S.first_name, 
+                    S.last_name, 
+                    COUNT(CASE WHEN A.status = 'Present' THEN 1 END) AS present_count,
+                    COUNT(A.attendance_id) AS total_classes,
+                    (CAST(COUNT(CASE WHEN A.status = 'Present' THEN 1 END) AS FLOAT) / COUNT(A.attendance_id)) * 100 AS attendance_rate
+                FROM Students S
+                LEFT JOIN Attendance A ON S.student_id = A.student_id
                 GROUP BY S.first_name, S.last_name
-                ORDER BY total_attendance DESC
+                ORDER BY attendance_rate DESC;
             """)
-
             result = cursor.fetchall()
             if result:
-                columns = ['First Name', 'Last Name', 'Total Attendance']
-                formatted_result = [list(row) for row in result]
-                df = pd.DataFrame(formatted_result, columns=columns)
+                result_data = [list(row) for row in result]
+                df = pd.DataFrame(result_data, columns=['First Name', 'Last Name', 'Present Count', 'Total Classes', 'Attendance Rate (%)'])
                 st.dataframe(df)
             else:
-                st.info("No data found.")
-        except Exception as e:
-            st.error(f"Error executing query: {str(e)}")
-    
-    
-        finally:
-            close_connection(conn)
+                st.write("No attendance data available.")
+
+        # Underperforming Students
+        with tabs[3]:
+            st.subheader("Underperforming Students")
+            cursor.execute("""
+                SELECT 
+                    S.first_name, 
+                    S.last_name, 
+                    AVG(CASE grade 
+                        WHEN 'A' THEN 95
+                        WHEN 'B' THEN 85
+                        WHEN 'C' THEN 75
+                        WHEN 'D' THEN 65
+                        WHEN 'F' THEN 55
+                    END) AS average_grade
+                FROM Grades G
+                JOIN Students S ON G.student_id = S.student_id
+                GROUP BY S.first_name, S.last_name
+                HAVING AVG(CASE grade 
+                        WHEN 'A' THEN 95
+                        WHEN 'B' THEN 85
+                        WHEN 'C' THEN 75
+                        WHEN 'D' THEN 65
+                        WHEN 'F' THEN 55
+                    END) < 70
+                ORDER BY average_grade ASC;
+            """)
+            result = cursor.fetchall()
+            if result:
+                result_data = [list(row) for row in result]
+                df = pd.DataFrame(result_data, columns=['First Name', 'Last Name', 'Average Grade'])
+                st.dataframe(df)
+            else:
+                st.write("No underperforming students found.")
+        # Attendance Trends Over Time
+        with tabs[4]:
+            st.subheader("Attendance Trends Over Time")
+            cursor.execute("""
+                SELECT 
+                    DATEPART(month, A.date) AS month,
+                    COUNT(CASE WHEN A.status = 'Present' THEN 1 END) AS present_count,
+                    COUNT(A.attendance_id) AS total_classes,
+                    (CAST(COUNT(CASE WHEN A.status = 'Present' THEN 1 END) AS FLOAT) / COUNT(A.attendance_id)) * 100 AS attendance_rate
+                FROM Attendance A
+                GROUP BY DATEPART(month, A.date)
+                ORDER BY month;
+            """)
+            result = cursor.fetchall()
+
+            if result:
+                result_data = [list(row) for row in result]
+                df = pd.DataFrame(result_data, columns=['Month', 'Present Count', 'Total Classes', 'Attendance Rate (%)'])
+                st.dataframe(df)
+
+                # Adding sliders for figure size customization
+                st.write("Adjust the figure size:")
+                width = st.slider("Width", min_value=5, max_value=15, value=10)
+                height = st.slider("Height", min_value=3, max_value=10, value=6)
+
+                # Plot attendance trends
+                fig, ax = plt.subplots(figsize=(width, height))
+                ax.plot(df['Month'], df['Attendance Rate (%)'], marker='o')
+                ax.set_title('Attendance Rate Over Time')
+                ax.set_xlabel('Month')
+                ax.set_ylabel('Attendance Rate (%)')
+                st.pyplot(fig)
+            else:
+                st.write("No attendance trend data available.")
+
+        # Class Enrollment Counts
+        with tabs[5]:
+            st.subheader("Class Enrollment Counts")
+            cursor.execute("""
+                SELECT 
+                    C.class_name, 
+                    COUNT(DISTINCT S.student_id) AS enrolled_students
+                FROM Classes C
+                JOIN Grades G ON C.class_id = G.class_id
+                JOIN Students S ON G.student_id = S.student_id
+                GROUP BY C.class_name
+                ORDER BY enrolled_students DESC;
+            """)
+            result = cursor.fetchall()
+            if result:
+                result_data = [list(row) for row in result]
+                df = pd.DataFrame(result_data, columns=['Class Name', 'Enrolled Students'])
+                st.dataframe(df)
+            else:
+                st.write("No enrollment data available.")
+
+        # Students with Consistent Attendance
+        with tabs[6]:
+            st.subheader("Students with Consistent Attendance")
+            cursor.execute("""
+                SELECT 
+                    S.first_name, 
+                    S.last_name, 
+                    COUNT(CASE WHEN A.status = 'Absent' THEN 1 END) AS absences,
+                    COUNT(A.attendance_id) AS total_classes,
+                    (CAST(COUNT(CASE WHEN A.status = 'Absent' THEN 1 END) AS FLOAT) / COUNT(A.attendance_id)) * 100 AS absence_rate
+                FROM Students S
+                LEFT JOIN Attendance A ON S.student_id = A.student_id
+                GROUP BY S.first_name, S.last_name
+                HAVING (CAST(COUNT(CASE WHEN A.status = 'Absent' THEN 1 END) AS FLOAT) / COUNT(A.attendance_id)) < 10
+                ORDER BY absence_rate ASC;
+            """)
+            result = cursor.fetchall()
+            if result:
+                result_data = [list(row) for row in result]
+                df = pd.DataFrame(result_data, columns=['First Name', 'Last Name', 'Absences', 'Total Classes', 'Absence Rate (%)'])
+                st.dataframe(df)
+            else:
+                st.write("No students with consistent attendance found.")
+
+        # Class Performance Comparison Over Time
+        with tabs[7]:
+            st.subheader("Class Performance Comparison Over Time")
+            cursor.execute("""
+                SELECT 
+                    C.class_name,
+                    DATEPART(year, G.date_assigned) AS year,  -- Replace 'date_assigned' with the correct column name for grade assignment date
+                    AVG(CASE grade 
+                        WHEN 'A' THEN 95
+                        WHEN 'B' THEN 85
+                        WHEN 'C' THEN 75
+                        WHEN 'D' THEN 65
+                        WHEN 'F' THEN 55
+                    END) AS average_grade
+                FROM Grades G
+                JOIN Classes C ON G.class_id = C.class_id
+                GROUP BY C.class_name, DATEPART(year, G.date_assigned)  -- Replace 'date_assigned' with the correct column name
+                ORDER BY C.class_name, year;
+            """)
+            result = cursor.fetchall()
+            if result:
+                result_data = [list(row) for row in result]
+                df = pd.DataFrame(result_data, columns=['Class Name', 'Year', 'Average Grade'])
+                st.dataframe(df)
+            else:
+                st.write("No class performance comparison data found.")
+
+    except Exception as e:
+        st.error(f"An error occurred while executing the query: {str(e)}")
+    finally:
+        cursor.close()
+        conn.close()
+
 
 def main():
     st.title("School Management System")

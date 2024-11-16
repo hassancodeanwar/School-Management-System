@@ -10,7 +10,7 @@ app = Flask(__name__)
 # Database configuration
 DB_CONFIG = {
     'Driver': '{SQL Server}',
-    'Server': 'CODEPC',
+    'Server': 'your_server_name',
     'Database': 'School_Grading_and_Attendance_System_DB',
     'Trusted_Connection': 'yes'
 }
@@ -90,7 +90,7 @@ def success():
 
 if __name__ == '__main__':
     app.run(
-        host='192.168.0.106',  # Makes the server externally visible
+        host='your_device_IP_address',  # Makes the server externally visible
         port=5000,       # You can change this port if needed
         debug=True       # Set to False in production
     )

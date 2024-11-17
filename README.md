@@ -207,8 +207,7 @@ streamlit run app.py
 
 1. Additional reporting capabilities
 2. User authentication and authorization
-3. File upload functionality for student records
-4. Export functionality for reports
-5. Dashboard for key metrics
-6. Mobile responsiveness improvements
+3. Export functionality for reports5
+4. Dashboard for key metrics
+5. Mobile responsiveness improvements
 </aside>
